@@ -1,38 +1,34 @@
-# effnet_version_of_code.py
+# effnet_hf.py
 import os
 import json
-import numpy as np
-from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models, transforms
+from PIL import Image
 import cv2
 import threading
+from huggingface_hub import hf_hub_download
+import numpy as np
 
-# =========================================================
-# CONFIG
-# =========================================================
+# ==== CONFIG ====
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-IMG_SIZE = 224   # giống training
+IMG_SIZE = 224
 TOPK = 5
+HF_REPO = "TuanVu219/Vit_Checkpoint_New"  # repo Hugging Face của bạn
+HF_CKPT_FILENAME = "best_effnet_ema.pth"
 
-# Path đến checkpoint và labels
-CKPT_PATH = os.path.join(os.path.dirname(__file__), "best_effnet_ema.pth")
-LABELS_JSON = os.path.join(os.path.dirname(__file__), "class_names.json")
+# ==== LOAD CHECKPOINT FROM HF ====
+effnet_ckpt_path = hf_hub_download(repo_id=HF_REPO, filename=HF_CKPT_FILENAME)
 
-# =========================================================
-# LOAD LABELS
-# =========================================================
+# ==== LOAD CLASS NAMES ====
+LABELS_JSON = "core/class_names.json"
 with open(LABELS_JSON, "r", encoding="utf-8") as f:
     labels = json.load(f)
-
 idx2label = {i: l for i, l in enumerate(labels)}
 num_classes = len(labels)
 
-# =========================================================
-# BUILD EfficientNet-B3 MODEL
-# =========================================================
+# ==== BUILD EfficientNet-B3 ====
 def build_efficientnet_b3(num_classes, pretrained=True, device=None):
     model = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1 if pretrained else None)
     in_features = model.classifier[1].in_features
@@ -44,38 +40,29 @@ def build_efficientnet_b3(num_classes, pretrained=True, device=None):
         model.to(device)
     return model
 
-# =========================================================
-# LOAD CHECKPOINT
-# =========================================================
+# ==== LOAD CHECKPOINT ====
 def load_checkpoint_to_model(model, ckpt_path, device):
-    if not os.path.exists(ckpt_path):
-        raise FileNotFoundError(f"❌ Checkpoint not found: {ckpt_path}")
-    print("🔁 Loading EMA checkpoint...")
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    if isinstance(ckpt, dict) and "ema" in ckpt:
-        sd = ckpt["ema"]
-    elif isinstance(ckpt, dict) and "model" in ckpt:
-        sd = ckpt["model"]
+    print("🔁 Loading checkpoint from HF cache...")
+    ckpt = torch.load(ckpt_path, map_location=device)
+    if isinstance(ckpt, dict):
+        if "ema" in ckpt:
+            sd = ckpt["ema"]
+        elif "model" in ckpt:
+            sd = ckpt["model"]
+        else:
+            sd = ckpt
     else:
         sd = ckpt
 
     # strip "module." nếu có
-    new_sd = {}
-    for k, v in sd.items():
-        if k.startswith("module."):
-            new_sd[k[7:]] = v
-        else:
-            new_sd[k] = v
-
-    model.load_state_dict(new_sd, strict=True)
+    new_sd = {k.replace("module.", "", 1) if k.startswith("module.") else k: v for k, v in sd.items()}
+    model.load_state_dict(new_sd, strict=False)
     model.to(device)
     model.eval()
-    print("✅ EMA model loaded.")
+    print("✅ EfficientNet-B3 model loaded.")
     return model
 
-# =========================================================
-# MODEL SINGLETON (thread-safe)
-# =========================================================
+# ==== MODEL SINGLETON ====
 _model = None
 _model_lock = threading.Lock()
 
@@ -86,34 +73,26 @@ def get_effnet_model():
             if _model is None:
                 print("🔹 Loading EfficientNet-B3 model (only once)...")
                 model = build_efficientnet_b3(num_classes=num_classes, pretrained=True, device=DEVICE)
-                model = load_checkpoint_to_model(model, CKPT_PATH, DEVICE)
+                model = load_checkpoint_to_model(model, effnet_ckpt_path, DEVICE)
                 _model = model
     return _model
 
-# =========================================================
-# TRANSFORM / PREPROCESS
-# =========================================================
+# ==== TRANSFORM ====
 preprocess_transform = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
     transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
 ])
 
 def preprocess_canvas_image(img):
-    """PIL.Image -> tensor [1,C,H,W] on device"""
     if img.mode != "RGB":
         img = img.convert("RGB")
     img = img.resize((IMG_SIZE, IMG_SIZE))
     return preprocess_transform(img).unsqueeze(0).to(DEVICE)
 
-# =========================================================
-# RECOGNITION
-# =========================================================
+# ==== RECOGNITION ====
 def recognize_char(img, k=TOPK):
-    """Nhận diện ký tự và trả về top-k nhãn dự đoán"""
     model = get_effnet_model()
     x = preprocess_canvas_image(img)
     with torch.no_grad():
@@ -121,7 +100,8 @@ def recognize_char(img, k=TOPK):
         probs = F.softmax(logits, dim=1)[0]
         top_probs, top_idxs = torch.topk(probs, k)
     results = [(idx2label[top_idxs[i].item()], float(top_probs[i].item())) for i in range(k)]
-    return results  # list [(label, prob), ...]
+    return results
+
 
 # =========================================================
 # MERGE BOXES
@@ -204,7 +184,7 @@ def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=No
                 merged_boxes.append((boxes[i], [("?", 0.0)]))
                 i += 1
 
-    return merged_boxes  # [(box, predictions)]
+    return merged_boxes
 
 # =========================================================
 # SEGMENT CHARACTERS
@@ -219,7 +199,7 @@ def segment_characters_from_image(img, k=TOPK):
     boxes = merge_boxes(boxes, min_dist=5)
     boxes = sorted(boxes, key=lambda b: b[0])
     merged = recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, k=k)
-    return merged  # [(box, predictions)]
+    return merged
 
 # =========================================================
 # STROKES -> IMAGE
@@ -237,11 +217,10 @@ def strokes_to_image(strokes, canvas_size=600, filename="output.png"):
     save_path = os.path.join(folder_path, filename)
     pil_img.save(save_path)
     print(f"✅ Image saved to {save_path}")
-    return Image.fromarray(img)
+    return pil_img
 
 # =========================================================
 # HỖ TRỢ KIỂM TRA KANJI
 # =========================================================
 def is_kanji(word):
-    """Kiểm tra từ toàn bộ là Kanji"""
     return all('\u4e00' <= c <= '\u9fff' for c in word)
