@@ -60,7 +60,7 @@
 
     // 🌐 WebSocket — tương thích cả local và deploy
     const ws_scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${ws_scheme}://${window.location.host}/ws/recognize/`);
+    const ws = new WebSocket(`wss://web-production-a4fdd2.up.railway.app/ws/recognize/`);
 
     ws.onopen = () => console.log("✅ WebSocket connected");
     ws.onclose = () => console.log("🔌 WebSocket closed");
