@@ -3,7 +3,7 @@
 Django==4.2.16
 channels==4.1.0
 daphne==4.0.0
-asgiref==3.11.0
+asgiref==3.8.1               # Phiên bản phù hợp với Django 4.2
 
 # --- Django extensions ---
 django-extensions==3.2.3
@@ -64,7 +64,6 @@ typer-slim==0.20.0
 
 django-cors-headers==4.9.0
 
-channels==4.3.2
 channels_redis==4.3.0
 redis==7.1.0
 msgpack==1.1.2
