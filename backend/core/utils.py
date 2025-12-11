@@ -1,81 +1,152 @@
-# effnet_hf.py
+# ==== BUILD EfficientNet-B3 ====
+# effnet_version_of_code2.py
 import os
 import json
+import threading
+from collections import OrderedDict
+
+import numpy as np
+from PIL import Image
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torchvision import models, transforms
-from PIL import Image
-import cv2
-import threading
-from huggingface_hub import hf_hub_download
-import numpy as np
 
-# ==== CONFIG ====
+from huggingface_hub import hf_hub_download
+
+# ====== HUGGINGFACE CONFIG ======# ==== CONFIG ====
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE = 224
 TOPK = 5
-HF_REPO = "TuanVu219/Vit_Checkpoint_New"  # repo Hugging Face của bạn
-HF_CKPT_FILENAME = "best_effnet_ema.pth"
+REPO_ID = "TuanVu219/Vit_Checkpoint_New"
+EFFNET_FILENAME = "best_effnet_ema.pth"
 
-# ==== LOAD CHECKPOINT FROM HF ====
-effnet_ckpt_path = hf_hub_download(repo_id=HF_REPO, filename=HF_CKPT_FILENAME)
+effnet_ckpt_path = hf_hub_download(
+    repo_id=REPO_ID,
+    filename=EFFNET_FILENAME
+)
 
-# ==== LOAD CLASS NAMES ====
-LABELS_JSON = "core/class_names.json"
-with open(LABELS_JSON, "r", encoding="utf-8") as f:
+# ====== CLASS LABELS ======
+with open("core/class_names.json", "r", encoding="utf-8") as f:
     labels = json.load(f)
+
 idx2label = {i: l for i, l in enumerate(labels)}
 num_classes = len(labels)
 
-# ==== BUILD EfficientNet-B3 ====
+# ====== DEVICE ======
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device:", device)
+
+
+# ==========================================================
+#     🎯 build_efficientnet_b3 — tên hàm bạn yêu cầu
+# ==========================================================
 def build_efficientnet_b3(num_classes, pretrained=True, device=None):
-    model = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1 if pretrained else None)
+    """
+    Xây EfficientNet-B3 với classifier được thay bằng đúng số class.
+    """
+    if pretrained:
+        model = models.efficientnet_b3(
+            weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1
+        )
+    else:
+        model = models.efficientnet_b3(weights=None)
+
+    # Replace classifier
     in_features = model.classifier[1].in_features
     model.classifier = nn.Sequential(
         nn.Dropout(0.3),
         nn.Linear(in_features, num_classes)
     )
+
     if device:
         model.to(device)
+
     return model
 
-# ==== LOAD CHECKPOINT ====
-def load_checkpoint_to_model(model, ckpt_path, device):
-    print("🔁 Loading checkpoint from HF cache...")
-    ckpt = torch.load(ckpt_path, map_location=device)
+
+# ==========================================================
+#     🎯 load_checkpoint_to_model — giữ nguyên tên cũ
+# ==========================================================
+def load_checkpoint_to_model(model, ckpt_path, use_ema_if_available=True, map_location=None):
+    print("Loading EfficientNet checkpoint:", ckpt_path)
+
+    map_location = map_location or device
+    ckpt = torch.load(ckpt_path, map_location=map_location, weights_only=False)
+
+    # Chọn state_dict
     if isinstance(ckpt, dict):
-        if "ema" in ckpt:
+        if use_ema_if_available and "ema" in ckpt:
             sd = ckpt["ema"]
+            print("🔁 Loading EMA weights")
         elif "model" in ckpt:
             sd = ckpt["model"]
+            print("🔁 Loading model weights")
         else:
             sd = ckpt
+            print("🔁 Loading raw state_dict")
     else:
         sd = ckpt
 
-    # strip "module." nếu có
-    new_sd = {k.replace("module.", "", 1) if k.startswith("module.") else k: v for k, v in sd.items()}
-    model.load_state_dict(new_sd, strict=False)
+    # Loại bỏ phần "module."
+    new_sd = {}
+    for k, v in sd.items():
+        if k.startswith("module."):
+            new_sd[k.replace("module.", "", 1)] = v
+        else:
+            new_sd[k] = v
+
+    # Load state_dict
+    try:
+        model.load_state_dict(new_sd, strict=False)
+        print("✅ state_dict loaded (strict=False)")
+    except Exception as e:
+        print("⚠ load_state_dict error:", e)
+        model_dict = model.state_dict()
+
+        partial = {k: v for k, v in new_sd.items()
+                   if k in model_dict and v.size() == model_dict[k].size()}
+
+        model_dict.update(partial)
+        model.load_state_dict(model_dict)
+        print("✅ Partial weights loaded")
+
     model.to(device)
     model.eval()
-    print("✅ EfficientNet-B3 model loaded.")
     return model
 
-# ==== MODEL SINGLETON ====
+
+# ==========================================================
+#     🎯 get_effnet_model — tên cuối cùng bạn sẽ dùng
+# ==========================================================
 _model = None
 _model_lock = threading.Lock()
 
 def get_effnet_model():
+    """
+    Load model EfficientNet-B3 only once (singleton).
+    """
     global _model
     if _model is None:
         with _model_lock:
             if _model is None:
-                print("🔹 Loading EfficientNet-B3 model (only once)...")
-                model = build_efficientnet_b3(num_classes=num_classes, pretrained=True, device=DEVICE)
-                model = load_checkpoint_to_model(model, effnet_ckpt_path, DEVICE)
+                print("🔹 Loading EfficientNet model (only once)...")
+
+                model = build_efficientnet_b3(
+                    num_classes=num_classes,
+                    pretrained=True,
+                    device=device
+                )
+
+                model = load_checkpoint_to_model(
+                    model,
+                    effnet_ckpt_path,
+                    use_ema_if_available=True
+                )
+
                 _model = model
+
     return _model
+
 
 # ==== TRANSFORM ====
 preprocess_transform = transforms.Compose([
