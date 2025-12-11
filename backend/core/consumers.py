@@ -42,8 +42,10 @@ class RecognizeConsumer(AsyncWebsocketConsumer):
                 case "strokes":
                     stroke = data.get("stroke")
                     if isinstance(stroke, list):
+                        logger.info(f"🖊 Client sent stroke: {stroke}")
                         self.strokes.append(stroke)
                     await self._run_and_send_predictions()
+
 
                 case "clear":
                     self.strokes.clear()
@@ -112,17 +114,33 @@ class RecognizeConsumer(AsyncWebsocketConsumer):
             # Scale strokes
             scaled_strokes, sx, sy = self._scale_strokes(self.strokes, SERVER_CANVAS_SIZE)
 
+            # Log strokes đã scale
+            logger.info(f"🖊 Scaled strokes: {scaled_strokes}")
+
             # Tạo ảnh từ strokes
             img = await sync_to_async(strokes_to_image)(scaled_strokes, SERVER_CANVAS_SIZE)
+            logger.info("🖼 Image generated from strokes")
 
-            # Gọi hàm segment + nhận dạng
+            # Segment & recognize
             merged = await sync_to_async(segment_characters_from_image)(img, 5)
-
 
             # Chuẩn bị kết quả
             results: List[Dict[str, Any]] = []
+
             for (box, preds) in merged:
-                bx = {"x": int(box[0]), "y": int(box[1]), "w": int(box[2]), "h": int(box[3])}
+                bx = {
+                    "x": int(box[0]),
+                    "y": int(box[1]),
+                    "w": int(box[2]),
+                    "h": int(box[3])
+                }
+
+                # 🔥 LOG BOX + TOP5
+                logger.info(f"📦 Box detected: {bx}")
+                logger.info("🎯 Top-5 predictions:")
+                for label, prob in preds:
+                    logger.info(f"    → {label}: {prob:.4f}")
+
                 topk = [{"label": str(l), "prob": float(p)} for l, p in preds]
                 results.append({"box": bx, "topk": topk})
 

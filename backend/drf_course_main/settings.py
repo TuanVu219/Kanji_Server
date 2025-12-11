@@ -151,3 +151,35 @@ REST_FRAMEWORK = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# -----------------------------
+# LOGGING CONFIG
+# -----------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+
+    "loggers": {
+        "": {  # Root logger
+            "handlers": ["console"],
+            "level": "INFO",   # bật INFO
+        },
+
+        "channels": {  # Logger cho Django Channels
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+
+        "core": {  # app của bạn (vì consumer nằm trong core)
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+    },
+}
