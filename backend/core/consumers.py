@@ -40,7 +40,7 @@ class RecognizeConsumer(AsyncWebsocketConsumer):
 
             match action:
                 case "strokes":
-                    stroke = data.get("strokes")
+                    stroke = data.get("stroke")
                     if isinstance(stroke, list):
                         self.strokes.append(stroke)
                     await self._run_and_send_predictions()
