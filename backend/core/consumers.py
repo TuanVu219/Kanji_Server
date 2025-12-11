@@ -39,8 +39,8 @@ class RecognizeConsumer(AsyncWebsocketConsumer):
                 self.client_canvas_size = data.get("canvas_size")
 
             match action:
-                case "stroke":
-                    stroke = data.get("stroke")
+                case "strokes":
+                    stroke = data.get("strokes")
                     if isinstance(stroke, list):
                         self.strokes.append(stroke)
                     await self._run_and_send_predictions()
