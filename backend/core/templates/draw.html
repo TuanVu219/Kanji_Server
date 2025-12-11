@@ -60,7 +60,6 @@
 
     // 🌐 WebSocket — tương thích cả local và deploy
     const ws_scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws_scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${ws_scheme}://${window.location.host}/ws/recognize/`);
 
 
