@@ -64,6 +64,3 @@ typer-slim==0.20.0
 
 django-cors-headers==4.9.0
 
-channels_redis==4.1.0
-redis==4.5.4
-msgpack==1.0.5

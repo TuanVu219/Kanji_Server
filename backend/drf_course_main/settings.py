@@ -12,7 +12,6 @@ DEBUG = int(os.environ.get("DEBUG", default=0))
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
 CORS_ALLOW_ALL_ORIGINS = True
-REDIS_URL = os.environ.get("REDIS_URL")
 
 # -----------------------------
 # CORS CONFIG
@@ -99,16 +98,8 @@ DATABASES = {
 # CHANNELS CONFIG (Redis)
 # -----------------------------
 # Nếu Railway cung cấp REDIS_URL thì dùng
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-        },
-    },
-}
+
 # -----------------------------
 # Password validation
 # -----------------------------
