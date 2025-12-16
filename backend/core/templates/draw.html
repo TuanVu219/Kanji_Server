@@ -1,194 +1,268 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="https://www.google.com/favicon.ico">
-  <title>Realtime Drawing Recognizer</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Realtime Drawing Recognizer</title>
 
-  <style>
-    body {
-      text-align: center;
-      background-color: #121212;
-      color: white;
-      font-family: monospace;
-    }
-    #canvas {
-      border: 2px solid #888;
-      background-color: black;
-      margin-top: 20px;
-      cursor: crosshair;
-    }
-    #predictions {
-      margin-top: 20px;
-      font-size: 16px;
-    }
-    button {
-      margin: 5px;
-      padding: 8px 14px;
-      border-radius: 8px;
-      border: none;
-      background: #333;
-      color: white;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #555;
-    }
-  </style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a2e;
+    color: #e5e5e5;
+    font-family: Inter, sans-serif;
+}
+
+h2 {
+    color: #b2a9e5;
+    margin-bottom: 12px;
+}
+
+canvas {
+    width: 500px;
+    height: 400px;
+    background: #0d0d18;
+    border: 4px solid #b2a9e5;
+    border-radius: 12px;
+    cursor: crosshair;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+
+.controls {
+    margin-top: 14px;
+}
+
+button {
+    padding: 10px 22px;
+    margin: 0 6px;
+    border: none;
+    border-radius: 25px;
+    background: #b2a9e5;
+    color: #1a1a2e;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(178,169,229,.4);
+}
+
+button:hover {
+    background: #9a90d8;
+}
+
+#predictions {
+    width: 500px;
+    margin-top: 20px;
+    background: #242442;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 1em;
+}
+
+#predictions div {
+    padding: 6px 0;
+    border-bottom: 1px dashed #3a3a60;
+}
+
+#predictions div:last-child {
+    border-bottom: none;
+}
+</style>
 </head>
 
 <body>
-  <h2>Realtime Drawing Recognizer 🎨</h2>
 
-  <canvas id="canvas" width="500" height="400"></canvas>
-  <br />
-  <button id="clear">Clear</button>
+<h2>✨ Realtime Drawing Recognizer ✍️</h2>
 
-  <div id="predictions"></div>
+<canvas id="canvas" width="500" height="400"></canvas>
 
-  <script>
-    // =====================
-    // CANVAS SETUP
-    // =====================
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
+<div class="controls">
+    <button id="undo">⬅ Back</button>
+    <button id="clear">🗑 Clear</button>
+</div>
 
-    let drawing = false;
-    let currentStroke = [];
-    let allStrokes = [];
+<div id="predictions">
+    <div style="text-align:center;color:#8a8a8a;">Bắt đầu vẽ để xem dự đoán</div>
+</div>
 
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#fff";
+<script>
+/* =========================
+   CANVAS STATE
+========================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = "black";
+ctx.lineWidth = 4;
+ctx.lineCap = "round";
+ctx.strokeStyle = "#40e0d0";
+
+let drawing = false;
+let currentStroke = [];
+let allStrokes = [];
+
+function clearCanvas() {
+    ctx.fillStyle = "#0d0d18";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
 
-    // =====================
-    // WEBSOCKET SETUP
-    // =====================
-    const ws_scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws_url = `${ws_scheme}://${window.location.host}/ws/recognize/`;
-    const ws = new WebSocket(ws_url);
-
-    ws.onopen = () => {
-      console.log("✅ WebSocket connected:", ws_url);
-    };
-
-    ws.onclose = () => {
-      console.log("🔌 WebSocket closed");
-    };
-
-    ws.onerror = (err) => {
-      console.error("⚠️ WebSocket error:", err);
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.status === "predictions") {
-        displayPredictions(data.predictions);
-      }
-    };
-
-    // =====================
-    // DRAW EVENTS
-    // =====================
-    canvas.addEventListener("mousedown", () => {
-      drawing = true;
-      currentStroke = [];
-      ctx.beginPath();
+function redrawCanvas() {
+    clearCanvas();
+    allStrokes.forEach(stroke => {
+        if (stroke.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(stroke[0][0], stroke[0][1]);
+        for (let i = 1; i < stroke.length; i++) {
+            ctx.lineTo(stroke[i][0], stroke[i][1]);
+        }
+        ctx.stroke();
+        ctx.closePath();
     });
+}
 
-    canvas.addEventListener("mousemove", (e) => {
-      if (!drawing) return;
+clearCanvas();
 
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+/* =========================
+   WEBSOCKET
+========================= */
+const scheme = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(`${scheme}://${location.host}/ws/recognize/`);
 
-      ctx.lineTo(x, y);
-      ctx.stroke();
+ws.onopen = () => console.log("✅ WebSocket connected");
 
-      currentStroke.push([x, y]);
-    });
+ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.status === "predictions") {
+        renderPredictions(data.predictions);
+    }
+};
 
-    canvas.addEventListener("mouseup", () => {
-      if (!drawing) return;
-      drawing = false;
+/* =========================
+   DRAW EVENTS
+========================= */
+canvas.addEventListener("mousedown", e => {
+    drawing = true;
+    currentStroke = [];
 
-      if (currentStroke.length > 0) {
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    currentStroke.push([x, y]);
+});
+
+canvas.addEventListener("mousemove", e => {
+    if (!drawing) return;
+
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    currentStroke.push([x, y]);
+});
+
+canvas.addEventListener("mouseup", () => {
+    if (!drawing) return;
+    drawing = false;
+    ctx.closePath();
+
+    if (currentStroke.length > 1) {
         allStrokes.push(currentStroke);
-        sendStroke(currentStroke);
-      }
-    });
 
-    canvas.addEventListener("mouseleave", () => {
-      drawing = false;
-    });
+        ws.send(JSON.stringify({
+            action: "strokes",
+            stroke: currentStroke,
+            canvas_size: {
+                width: canvas.width,
+                height: canvas.height
+            }
+        }));
+    }
+});
 
-    // =====================
-    // SEND STROKE
-    // =====================
-    function sendStroke(stroke) {
-      if (ws.readyState !== WebSocket.OPEN) return;
+/* =========================
+   UNDO
+========================= */
+document.getElementById("undo").onclick = () => {
+    if (allStrokes.length === 0) return;
 
-      ws.send(
-        JSON.stringify({
-          action: "strokes",
-          stroke: stroke,
-          canvas_size: {
-            width: canvas.width,
-            height: canvas.height,
-          },
-        })
-      );
+    allStrokes.pop();
+    redrawCanvas();
+
+    ws.send(JSON.stringify({ action: "undo" }));
+};
+
+/* =========================
+   CLEAR
+========================= */
+document.getElementById("clear").onclick = () => {
+    allStrokes = [];
+    clearCanvas();
+    ws.send(JSON.stringify({ action: "clear" }));
+    document.getElementById("predictions").innerHTML =
+        '<div style="text-align:center;color:#8a8a8a;">Bắt đầu vẽ để xem dự đoán</div>';
+};
+
+/* =========================
+   PREDICTIONS UI (TOP-5)
+========================= */
+function renderPredictions(predictions) {
+    const container = document.getElementById("predictions");
+    container.innerHTML = "<b>Top 5 kết quả:</b><br/>";
+
+    // 1️⃣ Lấy top-5 của mỗi ký tự
+    const topKPerChar = predictions.map(p => p.topk.slice(0, 5));
+
+    // 2️⃣ Cartesian product
+    function cartesian(arrays) {
+        return arrays.reduce((acc, curr) => {
+            const res = [];
+            acc.forEach(a => {
+                curr.forEach(c => {
+                    res.push([...a, c]);
+                });
+            });
+            return res;
+        }, [[]]);
     }
 
-    // =====================
-    // CLEAR CANVAS
-    // =====================
-    document.getElementById("clear").addEventListener("click", () => {
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      allStrokes = [];
+    const combos = cartesian(topKPerChar);
 
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action: "clear" }));
-      }
-
-      document.getElementById("predictions").innerHTML = "";
+    // 3️⃣ Tính xác suất chuỗi
+    const scored = combos.map(combo => {
+        return {
+            text: combo.map(c => c.label).join(""),
+            prob: combo.reduce((p, c) => p * c.prob, 1)
+        };
     });
 
-    // =====================
-    // DISPLAY PREDICTIONS
-    // =====================
-    function displayPredictions(predictions) {
-      const container = document.getElementById("predictions");
-      container.innerHTML = "";
+    // 4️⃣ Sort & lấy top-5
+    scored.sort((a, b) => b.prob - a.prob);
+    const top5 = scored.slice(0, 5);
 
-      const topKPerStroke = predictions.map(p => p.topk.slice(0, 5));
-
-      const cartesian = (arr) =>
-        arr.reduce(
-          (a, b) => a.flatMap(d => b.map(e => [...d, e])),
-          [[]]
-        );
-
-      const combos = cartesian(topKPerStroke)
-        .map(combo => ({
-          chars: combo.map(c => c.label).join(""),
-          prob: combo.reduce((p, c) => p * c.prob, 1),
-        }))
-        .sort((a, b) => b.prob - a.prob)
-        .slice(0, 5);
-
-      combos.forEach((c, i) => {
+    // 5️⃣ Render
+    top5.forEach((c, i) => {
         const div = document.createElement("div");
-        div.textContent = `#${i + 1}: ${c.chars}`;
+        div.innerHTML = `
+            #${i + 1}: 
+            <b style="font-size:18px;color:#40e0d0">${c.text}</b>
+            <span style="float:right">
+                ${(c.prob * 100).toFixed(2)}%
+            </span>
+        `;
         container.appendChild(div);
-      });
-    }
-  </script>
+    });
+}
+
+</script>
+
 </body>
 </html>

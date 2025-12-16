@@ -122,9 +122,6 @@ _model = None
 _model_lock = threading.Lock()
 
 def get_effnet_model():
-    """
-    Load model EfficientNet-B3 only once (singleton).
-    """
     global _model
     if _model is None:
         with _model_lock:
@@ -143,9 +140,15 @@ def get_effnet_model():
                     use_ema_if_available=True
                 )
 
+                # 🔥 WARMUP — CỰC QUAN TRỌNG
+                dummy = torch.zeros(1, 3, IMG_SIZE, IMG_SIZE).to(device)
+                with torch.no_grad():
+                    model(dummy)
+
                 _model = model
 
     return _model
+
 
 
 # ==== TRANSFORM ====
