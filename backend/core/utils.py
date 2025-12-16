@@ -195,7 +195,12 @@ def merge_boxes(boxes, min_dist=10):
                 merged.append([x, y, w, h])
     return merged
 
-def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=None, k=TOPK):
+def recognize_and_merge_boxes_exhaustive(
+    gray,
+    boxes,
+    max_span=None,
+    k=TOPK
+):
     n = len(boxes)
     merged_boxes = []
     i = 0
@@ -203,12 +208,19 @@ def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=No
     H, W = gray.shape[:2]
 
     while i < n:
-        best_prob = -1
+        best_prob = -1.0
         best_box = None
         best_j = i
         best_preds = None
 
-        nx, ny, nx2, ny2 = boxes[i][0], boxes[i][1], boxes[i][0] + boxes[i][2], boxes[i][1] + boxes[i][3]
+        # init merged box
+        nx, ny, nx2, ny2 = (
+            boxes[i][0],
+            boxes[i][1],
+            boxes[i][0] + boxes[i][2],
+            boxes[i][1] + boxes[i][3]
+        )
+
         j_limit = n if max_span is None else min(n, i + max_span)
 
         for j in range(i, j_limit):
@@ -223,6 +235,7 @@ def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=No
             y1 = max(0, int(ny))
             x2c = min(W, int(nx2))
             y2c = min(H, int(ny2))
+
             if x2c <= x1 or y2c <= y1:
                 continue
 
@@ -230,9 +243,14 @@ def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=No
             if key in cache:
                 preds = cache[key]
             else:
-                crop = Image.fromarray(gray[y1:y2c, x1:x2c]).convert("RGB")
+                crop = Image.fromarray(
+                    gray[y1:y2c, x1:x2c]
+                ).convert("RGB")
                 preds = recognize_char(crop, k=k)
                 cache[key] = preds
+
+            if not preds:
+                continue
 
             top_label, top_p = preds[0]
             if top_p > best_prob:
@@ -241,21 +259,23 @@ def recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, max_span=No
                 best_j = j
                 best_preds = preds
 
+        # fallback cực hiếm: model không trả gì
         if best_box is None:
-            merged_boxes.append(([0, 0, 0, 0], [("?", 0.0)]))
-            i += 1
-        elif best_j == i:
-            merged_boxes.append((best_box, best_preds))
-            i += 1
-        else:
-            if best_prob >= threshold:
-                merged_boxes.append((best_box, best_preds))
-                i = best_j + 1
-            else:
-                merged_boxes.append((boxes[i], [("?", 0.0)]))
-                i += 1
+            crop = Image.fromarray(
+                gray[
+                    boxes[i][1]:boxes[i][1] + boxes[i][3],
+                    boxes[i][0]:boxes[i][0] + boxes[i][2]
+                ]
+            ).convert("RGB")
+            best_preds = recognize_char(crop, k=k)
+            best_box = boxes[i]
+            best_j = i
+
+        merged_boxes.append((best_box, best_preds))
+        i = best_j + 1
 
     return merged_boxes
+
 
 # =========================================================
 # SEGMENT CHARACTERS
@@ -282,7 +302,7 @@ def strokes_to_image(strokes, canvas_size=600, filename="output.png"):
             x1, y1 = stroke[i - 1]
             x2, y2 = stroke[i]
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-            cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), thickness=25, lineType=cv2.LINE_AA)
+            cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), thickness=20, lineType=cv2.LINE_AA)
     pil_img = Image.fromarray(img)
     folder_path = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(folder_path, filename)
