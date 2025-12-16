@@ -289,7 +289,7 @@ def segment_characters_from_image(img, k=TOPK):
     boxes = [cv2.boundingRect(c) for c in contours]
     boxes = merge_boxes(boxes, min_dist=5)
     boxes = sorted(boxes, key=lambda b: b[0])
-    merged = recognize_and_merge_boxes_exhaustive(gray, boxes, threshold=0.7, k=k)
+    merged = recognize_and_merge_boxes_exhaustive(gray, boxes, k=k)
     return merged
 
 # =========================================================

@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="https://www.google.com/favicon.ico">
   <title>Realtime Drawing Recognizer</title>
+
   <style>
     body {
       text-align: center;
@@ -20,7 +21,6 @@
     }
     #predictions {
       margin-top: 20px;
-      text-align: center;
       font-size: 16px;
     }
     button {
@@ -31,41 +31,59 @@
       background: #333;
       color: white;
       cursor: pointer;
-      transition: 0.2s;
     }
     button:hover {
       background: #555;
     }
   </style>
 </head>
+
 <body>
   <h2>Realtime Drawing Recognizer 🎨</h2>
+
   <canvas id="canvas" width="500" height="400"></canvas>
-  <br>
+  <br />
   <button id="clear">Clear</button>
 
   <div id="predictions"></div>
 
   <script>
+    // =====================
+    // CANVAS SETUP
+    // =====================
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
+
     let drawing = false;
     let currentStroke = [];
     let allStrokes = [];
 
-    // 🎯 Màu vẽ: trắng trên nền đen
     ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#fff";
 
-    // 🌐 WebSocket — tương thích cả local và deploy
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // =====================
+    // WEBSOCKET SETUP
+    // =====================
     const ws_scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`wss://web-production-a4fdd2.up.railway.app/ws/recognize/`);
+    const ws_url = `${ws_scheme}://${window.location.host}/ws/recognize/`;
+    const ws = new WebSocket(ws_url);
 
+    ws.onopen = () => {
+      console.log("✅ WebSocket connected:", ws_url);
+    };
 
-    ws.onopen = () => console.log("✅ WebSocket connected");
-    ws.onclose = () => console.log("🔌 WebSocket closed");
-    ws.onerror = (err) => console.error("⚠️ WebSocket error:", err);
+    ws.onclose = () => {
+      console.log("🔌 WebSocket closed");
+    };
+
+    ws.onerror = (err) => {
+      console.error("⚠️ WebSocket error:", err);
+    };
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.status === "predictions") {
@@ -73,7 +91,9 @@
       }
     };
 
-    // === Vẽ ===
+    // =====================
+    // DRAW EVENTS
+    // =====================
     canvas.addEventListener("mousedown", () => {
       drawing = true;
       currentStroke = [];
@@ -82,6 +102,7 @@
 
     canvas.addEventListener("mousemove", (e) => {
       if (!drawing) return;
+
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -93,72 +114,76 @@
     });
 
     canvas.addEventListener("mouseup", () => {
-      if (drawing) {
-        drawing = false;
-        if (currentStroke.length > 0) {
-          allStrokes.push(currentStroke);
-          sendStroke(currentStroke);
-        }
+      if (!drawing) return;
+      drawing = false;
+
+      if (currentStroke.length > 0) {
+        allStrokes.push(currentStroke);
+        sendStroke(currentStroke);
       }
     });
 
-    // === Gửi nét đến WebSocket ===
+    canvas.addEventListener("mouseleave", () => {
+      drawing = false;
+    });
+
+    // =====================
+    // SEND STROKE
+    // =====================
     function sendStroke(stroke) {
-      const message = {
-        action: "strokes",
-        stroke: stroke,
-        canvas_size: { width: canvas.width, height: canvas.height },
-      };
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message));
-      }
+      if (ws.readyState !== WebSocket.OPEN) return;
+
+      ws.send(
+        JSON.stringify({
+          action: "strokes",
+          stroke: stroke,
+          canvas_size: {
+            width: canvas.width,
+            height: canvas.height,
+          },
+        })
+      );
     }
 
-    // === Clear canvas ===
+    // =====================
+    // CLEAR CANVAS
+    // =====================
     document.getElementById("clear").addEventListener("click", () => {
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       allStrokes = [];
+
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ action: "clear" }));
       }
+
       document.getElementById("predictions").innerHTML = "";
     });
 
-    // Khởi tạo canvas nền đen ban đầu
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // === Hiển thị top 5 gợi ý ===
+    // =====================
+    // DISPLAY PREDICTIONS
+    // =====================
     function displayPredictions(predictions) {
       const container = document.getElementById("predictions");
       container.innerHTML = "";
 
-      const topKPerStroke = predictions.map(pred => pred.topk.slice(0, 5));
+      const topKPerStroke = predictions.map(p => p.topk.slice(0, 5));
 
-      function cartesian(arrays) {
-        return arrays.reduce((acc, curr) => {
-          const res = [];
-          acc.forEach(a => {
-            curr.forEach(c => {
-              res.push([...a, c]);
-            });
-          });
-          return res;
-        }, [[]]);
-      }
+      const cartesian = (arr) =>
+        arr.reduce(
+          (a, b) => a.flatMap(d => b.map(e => [...d, e])),
+          [[]]
+        );
 
-      const combos = cartesian(topKPerStroke);
-      const comboScores = combos.map(combo => {
-        const chars = combo.map(c => c.label).join('');
-        const prob = combo.reduce((p, c) => p * c.prob, 1);
-        return { chars, prob };
-      });
+      const combos = cartesian(topKPerStroke)
+        .map(combo => ({
+          chars: combo.map(c => c.label).join(""),
+          prob: combo.reduce((p, c) => p * c.prob, 1),
+        }))
+        .sort((a, b) => b.prob - a.prob)
+        .slice(0, 5);
 
-      comboScores.sort((a, b) => b.prob - a.prob);
-      const top5 = comboScores.slice(0, 5);
-
-      top5.forEach((c, i) => {
+      combos.forEach((c, i) => {
         const div = document.createElement("div");
         div.textContent = `#${i + 1}: ${c.chars}`;
         container.appendChild(div);
