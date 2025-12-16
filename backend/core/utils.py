@@ -302,7 +302,7 @@ def strokes_to_image(strokes, canvas_size=600, filename="output.png"):
             x1, y1 = stroke[i - 1]
             x2, y2 = stroke[i]
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-            cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), thickness=20, lineType=cv2.LINE_AA)
+            cv2.line(img, (x1, y1), (x2, y2), (255, 255, 255), thickness=15, lineType=cv2.LINE_AA)
     pil_img = Image.fromarray(img)
     folder_path = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(folder_path, filename)
