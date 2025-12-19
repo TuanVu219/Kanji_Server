@@ -12,6 +12,7 @@ DEBUG = int(os.environ.get("DEBUG", default=0))
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
 CORS_ALLOW_ALL_ORIGINS = True
+GEMINI_API_KEY = "AIzaSyD0emc_YNoOqia7NvKvOnY6IDyiPjiRK9E"
 
 # -----------------------------
 # CORS CONFIG

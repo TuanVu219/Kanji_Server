@@ -130,7 +130,7 @@ clearCanvas();
    WEBSOCKET
 ========================= */
 const scheme = location.protocol === "https:" ? "wss" : "ws";
-const ws = new WebSocket(`${scheme}://${location.host}/ws/recognize/`);
+const ws = new WebSocket(`wss://web-production-a4fdd2.up.railway.app/ws/recognize/`);
 
 ws.onopen = () => console.log("✅ WebSocket connected");
 
