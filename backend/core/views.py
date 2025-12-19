@@ -52,24 +52,16 @@ def gemini_translate(request):
 
     # ===== 2. TẠO PROMPT "LITERAL" (CHỐNG GỘP DÒNG) =====
     prompt_text = f"""
-    Bạn là một máy dịch thuật "Literal" (Dịch nguyên văn bám sát vị trí).
 
     NHIỆM VỤ:
     - Input: Mảng JSON chứa {line_count} dòng tiếng Nhật.
     - Output: Mảng JSON chứa {line_count} dòng tiếng Việt.
 
     QUY TẮC BẮT BUỘC (CRITICAL):
-    1. GIỮ NGUYÊN CẤU TRÚC NGẮT DÒNG CỦA ẢNH GỐC.
-    2. Nếu dòng tiếng Nhật bị ngắt giữa chừng (ví dụ: mất nửa từ), dòng tiếng Việt cũng phải ngắt tương ứng.
-    3. TUYỆT ĐỐI KHÔNG tự ý di chuyển từ ngữ từ dòng dưới lên dòng trên để ghép câu hoàn chỉnh.
-    4. Ưu tiên dịch từng dòng độc lập (Word-by-Word) nếu câu bị ngắt.
-
-    Ví dụ xử lý dòng bị ngắt:
-    - Input dòng 1: "Tôi đang đi siêu"
-    - Input dòng 2: "thị mua đồ"
-    => Output dòng 1 PHẢI LÀ: "Tôi đang đi siêu" (Giữ nguyên sự cụt lủn)
-    => Output dòng 2 PHẢI LÀ: "thị mua đồ"
-    (CẤM dịch dòng 1 thành "Tôi đang đi siêu thị")
+    1. Dịch sang tiếng Việt một cách tự nhiên nhất và dễ hiểu nhất, không dịch word by word hoặc quá cứng
+    2. GIỮ NGUYÊN CẤU TRÚC NGẮT DÒNG CỦA ẢNH GỐC.
+    
+   
 
     Input Data: 
     {json.dumps(lines, ensure_ascii=False)}
