@@ -64,3 +64,4 @@ typer-slim==0.20.0
 
 django-cors-headers==4.9.0
 
+requests==2.32.5
